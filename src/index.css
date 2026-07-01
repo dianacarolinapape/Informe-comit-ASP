@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Montserrat", sans-serif;
+  
+  --color-ecogreen-dark: #004e28;
+  --color-ecogreen-primary: #006d38;
+  --color-ecogreen-bright: #00a859;
+  --color-ecogreen-light: #77fca3;
+}
+
+/* Custom background animations and subtle glass card filters */
+.wave-bg {
+  background-image: linear-gradient(rgba(243, 244, 245, 0.94), rgba(243, 244, 245, 0.94)), url('https://lh3.googleusercontent.com/aida-public/AB6AXuAXuevfSh3Giu66rqiMyOCcbdb6kQultX7OF17Oe-y6eydTpTTZCdy988qqOZS5TDzxxGSlj2sYbnaqhEZmygoi-DxlunugSI5pjAmmocQi6KIzB8RbjBQ_l8rlx74A8D71CCb-_ms1dI53UfELQfqP3FI93-S6K8chgeaBG5aq_-w-i_Y9Z3cXFh2SlBDfydrWbTmgtmlHsZq5H00FpYNFoRu8xJLy-hZc1lWpsLNwgjSj9_NLQg4rRUv3JVBd-AnCQsgO-Y9i2CyN');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #bccabc;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #006d38;
+}
+
+/* Glowing spark animations */
+@keyframes spark {
+  0%, 100% {
+    transform: scale(0.8) rotate(0deg);
+    opacity: 0.6;
+    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+  }
+  50% {
+    transform: scale(1.3) rotate(180deg);
+    opacity: 1;
+    filter: drop-shadow(0 0 15px rgba(251, 191, 36, 1));
+  }
+}
+
+.spark-animate {
+  animation: spark 3s infinite ease-in-out;
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(2deg); }
+}
+
+.float-animate {
+  animation: float-gentle 6s infinite ease-in-out;
+}
+

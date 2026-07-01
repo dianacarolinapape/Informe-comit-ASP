@@ -1,0 +1,6 @@
+{
+  "name": "Seguridad de Procesos GOR",
+  "description": "Aplicación para el control de seguridad de procesos, carga interactiva de planes de trabajo y comentarios por disciplina con Smart Insights de IA para Ecopetrol región GOR.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
