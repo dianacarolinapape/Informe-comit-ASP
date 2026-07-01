@@ -16,11 +16,6 @@ import ReportGerencialView from "./components/ReportGerencialView";
 import SlidesView from "./components/SlidesView";
 import ContextSetupView from "./components/ContextSetupView";
 import {
-  testConnection,
-  saveReportToFirestore,
-  loadReportFromFirestore,
-} from "./lib/firebase";
-import {
   Bell,
   User,
   Activity,
@@ -55,13 +50,11 @@ export default function App() {
   // Core Persisted States with local storage fallbacks
   const [tasks, setTasks] = useState<Task[]>(() => {
     const dbVersion = localStorage.getItem("gor_db_version");
-    const isNewDb = dbVersion === "v3";
+    const isNewDb = dbVersion === "v2";
     
     if (!isNewDb) {
       localStorage.removeItem("gor_tasks");
-      localStorage.removeItem("gor_disciplines");
-      localStorage.removeItem("gor_insights");
-      localStorage.setItem("gor_db_version", "v3");
+      localStorage.setItem("gor_db_version", "v2");
     }
 
     const saved = isNewDb ? localStorage.getItem("gor_tasks") : null;
@@ -105,9 +98,8 @@ export default function App() {
       const newElem = {
         id: "ia_itp",
         name: "Implementación de recursos tecnológicos potenciados con IA para ITP",
-        status: "Pendiente",
-        comment: "",
-        optimizedComment: ""
+        status: "Completado",
+        comment: "Se inició la fase de evaluación para la integración de herramientas de IA generativa y visión artificial en los procesos de inspección técnica de ITP."
       };
       if (revisionIndex !== -1) {
         loaded = [
@@ -158,80 +150,6 @@ export default function App() {
   const [notificationCount, setNotificationCount] = useState(3);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState<{ title: string; content: string } | null>(null);
-
-  // Firebase Integration States
-  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [isLoadingReport, setIsLoadingReport] = useState(false);
-
-  // Test connection on app mount
-  useEffect(() => {
-    testConnection()
-      .then(() => setIsFirebaseConnected(true))
-      .catch((err) => {
-        console.error("Firebase connection test failed:", err);
-        setIsFirebaseConnected(false);
-      });
-  }, []);
-
-  // Fetch report from Firebase when context changes
-  useEffect(() => {
-    if (!reportContext) return;
-
-    const fetchContextReport = async () => {
-      setIsLoadingReport(true);
-      try {
-        const cloudReport = await loadReportFromFirestore(reportContext);
-        if (cloudReport) {
-          setTasks(cloudReport.tasks);
-          setDisciplines(cloudReport.disciplines);
-          setTeamMembers(cloudReport.teamMembers);
-          setInsights(cloudReport.insights);
-          setLastSynced(cloudReport.updatedAt);
-        } else {
-          // If no cloud report exists, save the current local/default state as the initial cloud report
-          await saveReportToFirestore(reportContext, {
-            tasks,
-            disciplines,
-            teamMembers,
-            insights,
-          });
-          setLastSynced(new Date().toISOString());
-        }
-      } catch (err) {
-        console.error("Error syncing report from Firebase:", err);
-      } finally {
-        setIsLoadingReport(false);
-      }
-    };
-
-    fetchContextReport();
-  }, [reportContext]);
-
-  // Debounced auto-save to Firestore on any core state changes
-  useEffect(() => {
-    if (!reportContext || isLoadingReport) return;
-
-    const timer = setTimeout(async () => {
-      setIsSyncing(true);
-      try {
-        await saveReportToFirestore(reportContext, {
-          tasks,
-          disciplines,
-          teamMembers,
-          insights,
-        });
-        setLastSynced(new Date().toISOString());
-      } catch (err) {
-        console.error("Error auto-saving report to Firebase:", err);
-      } finally {
-        setIsSyncing(false);
-      }
-    }, 1500); // 1.5s debounce
-
-    return () => clearTimeout(timer);
-  }, [tasks, disciplines, teamMembers, insights, reportContext, isLoadingReport]);
 
   // Synchronize state with local storage
   useEffect(() => {
@@ -318,7 +236,7 @@ export default function App() {
   };
 
   // Discipline Mutator
-  const handleUpdateComment = (id: string, newComment: string, optimizedVal?: string) => {
+  const handleUpdateComment = (id: string, newComment: string) => {
     setDisciplines((prev) =>
       prev.map((d) => {
         if (d.id === id) {
@@ -326,7 +244,6 @@ export default function App() {
           return {
             ...d,
             comment: newComment,
-            optimizedComment: typeof optimizedVal === "string" ? optimizedVal : newComment,
             status: hasComment ? "Completado" : "Pendiente"
           };
         }
@@ -410,7 +327,7 @@ export default function App() {
       const response = await fetch("/api/optimize-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, comment, tasks }),
+        body: JSON.stringify({ id, comment }),
       });
 
       if (!response.ok) {
@@ -425,15 +342,6 @@ export default function App() {
           d.id === id ? { ...d, optimizedComment: optimizedText } : d
         )
       );
-
-      if (id === "sharepoint") {
-        return {
-          optimized: optimizedText,
-          matches: data.matches || [],
-          unmatched: data.unmatched || []
-        };
-      }
-
       return optimizedText;
     } catch (error) {
       console.warn("Error al optimizar comentario con IA (activando fallback local):", error);
@@ -445,49 +353,8 @@ export default function App() {
           d.id === id ? { ...d, optimizedComment: localOptimized } : d
         )
       );
-
-      if (id === "sharepoint") {
-        // Run simple local regex matches client-side in case of API failure
-        const matches: any[] = [];
-        tasks.forEach((t) => {
-          if (t.estado !== "Completado") {
-            const projId = t.proyecto.toLowerCase().split("_")[0];
-            const paqId = t.paquete.toLowerCase();
-            const commentLower = comment.toLowerCase();
-            if (commentLower.includes(projId) && commentLower.includes(paqId)) {
-              matches.push({
-                matchedTaskId: t.id,
-                proyectoIdentified: t.proyecto,
-                paqueteIdentified: t.paquete,
-                explanation: "Coincidencia local (enlace de contingencia fuera de línea)"
-              });
-            }
-          }
-        });
-        return {
-          optimized: localOptimized,
-          matches,
-          unmatched: []
-        };
-      }
-
       return localOptimized;
     }
-  };
-
-  const handleApplySharepointMatches = (matchedIds: string[]) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (matchedIds.includes(t.id)) {
-          return {
-            ...t,
-            estado: "Completado" as const,
-            avance: t.peso,
-          };
-        }
-        return t;
-      })
-    );
   };
 
   // Insights Mutator
@@ -627,22 +494,16 @@ export default function App() {
               <p className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 INDICADORES DE GESTIÓN DE LA TECNOLOGÍA DEL PROCESO
               </p>
-
-              {/* Firebase Cloud Connection Status */}
-              <div className="mt-3 p-2 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-[9px] font-semibold text-slate-600 shadow-xs">
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${isFirebaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-                  <span>Nube: {isFirebaseConnected ? 'Firebase' : 'Local'}</span>
-                </div>
-                {isSyncing ? (
-                  <span className="text-amber-600 animate-pulse font-bold">Guardando...</span>
-                ) : (
-                  <span className="text-slate-400 font-medium">
-                    {lastSynced ? `Sinc. ${new Date(lastSynced).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Sincronizado'}
-                  </span>
-                )}
-              </div>
             </div>
+
+            {/* Nuevo Reporte CTA Button in Sidebar matching mockup */}
+            <button
+              onClick={handleSidebarNewReport}
+              className="mb-6 w-full flex items-center justify-center gap-2 py-3 bg-ecogreen-primary hover:bg-[#004e28] text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nuevo Reporte</span>
+            </button>
 
             {/* Nav Menu */}
             <nav className="flex flex-col gap-1.5 flex-1">
@@ -698,6 +559,17 @@ export default function App() {
             {/* Sidebar bottom configs */}
             <div className="mt-auto border-t border-slate-200 pt-4 flex flex-col gap-1.5">
               <button
+                onClick={() => setShowInfoModal({
+                  title: "Configuración del Sistema GOR",
+                  content: "Región: Andina Oriente. Entorno de Datos: Seguro. IA Engine: Gemini 3.5 Flash. Modo de Persistencia: LocalStorage seguro. Sincronización automática de cambios activa.",
+                })}
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-200/50 text-slate-500 transition-colors text-left"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-xs font-semibold">Configuración</span>
+              </button>
+              
+              <button
                 onClick={() => setActiveTab("portada")}
                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-rose-50 text-rose-600 transition-colors text-left"
               >
@@ -731,8 +603,6 @@ export default function App() {
                   onUpdateInsights={handleUpdateInsights}
                   onOptimizeDiscipline={handleOptimizeDiscipline}
                   contexto={reportContext}
-                  tasks={tasks}
-                  onApplySharepointMatches={handleApplySharepointMatches}
                 />
               )}
 
