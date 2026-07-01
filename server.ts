@@ -189,14 +189,100 @@ Asegúrate de que los textos sean formales, corporativos y con enfoque técnico 
       "Monitoreo predictivo continuo activo en sistemas de alivio y control de barreras.",
       "Requerimiento preventivo de actualización periódica para mitigar brechas de información.",
     ];
-    
     res.json({ hitos, alertas });
   }
 });
 
+// Local matching algorithm for task identification when Gemini is offline or as a secondary check
+function localMatchTasks(comment: string, tasks: any[]): { matches: any[]; unmatched: any[] } {
+  const matches: any[] = [];
+  const unmatched: any[] = [];
+
+  const normalize = (str: string) => {
+    return (str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove accents
+      .replace(/[^a-z0-9\s-_]/g, " ")  // replace punctuation with spaces
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const phrases = comment
+    .split(/(?:[.\n]|\s{2,})/)
+    .map(p => p.trim())
+    .filter(p => p.length > 5);
+
+  const searchPhrases = phrases.length > 0 ? phrases : [comment];
+
+  for (const task of tasks) {
+    if (task.estado === "Completado") continue;
+
+    const taskProj = normalize(task.proyecto);
+    const taskPaq = normalize(task.paquete);
+
+    // Get code parts
+    const projCodeMatch = task.proyecto.match(/ECU\d+/i);
+    const projCode = projCodeMatch ? projCodeMatch[0].toLowerCase() : null;
+
+    const paqCodeMatch = task.paquete.match(/([a-z0-9]+-[a-z0-9]+|[a-z]{2,}\d+)/i);
+    const paqCode = paqCodeMatch ? paqCodeMatch[0].toLowerCase() : null;
+
+    let matchedPhraseIndex = -1;
+
+    for (let i = 0; i < searchPhrases.length; i++) {
+      const phraseNorm = normalize(searchPhrases[i]);
+
+      let projMatched = false;
+      let paqMatched = false;
+
+      // Project Match: code or direct name or key words
+      if (projCode && phraseNorm.includes(projCode)) {
+        projMatched = true;
+      } else if (phraseNorm.includes(taskProj) || taskProj.includes(phraseNorm)) {
+        projMatched = true;
+      } else {
+        const projWords = taskProj.split(" ").filter(w => w.length > 3 && w !== "modulo" && w !== "proyecto" && w !== "edp");
+        if (projWords.length > 0 && projWords.every(w => phraseNorm.includes(w))) {
+          projMatched = true;
+        }
+      }
+
+      // Package Match: code or direct name or key words
+      if (paqCode && phraseNorm.includes(paqCode)) {
+        paqMatched = true;
+      } else if (phraseNorm.includes(taskPaq) || taskPaq.includes(phraseNorm)) {
+        paqMatched = true;
+      } else {
+        const paqWords = taskPaq.split(" ").filter(w => w.length > 3 && w !== "bateria" && w !== "paquete");
+        if (paqWords.length > 0 && paqWords.every(w => phraseNorm.includes(w))) {
+          paqMatched = true;
+        }
+      }
+
+      if (projMatched && paqMatched) {
+        matchedPhraseIndex = i;
+        break;
+      }
+    }
+
+    if (matchedPhraseIndex !== -1) {
+      matches.push({
+        matchedTaskId: task.id,
+        proyectoIdentified: task.proyecto,
+        paqueteIdentified: task.paquete,
+        confidence: "high",
+        explanation: `Coincidencia encontrada para proyecto "${task.proyecto}" y paquete "${task.paquete}"`
+      });
+    }
+  }
+
+  return { matches, unmatched };
+}
+
 // API endpoint to optimize any discipline's comment using Gemini 3.5 Flash
 app.post("/api/optimize-comment", async (req, res) => {
-  const { id, comment } = req.body;
+  const { id, comment, tasks = [] } = req.body;
 
   if (!id || typeof comment !== "string") {
     return res.status(400).json({ error: "Los campos 'id' y 'comment' son requeridos." });
@@ -204,11 +290,124 @@ app.post("/api/optimize-comment", async (req, res) => {
 
   const cleanComment = comment.trim();
   if (cleanComment.length === 0) {
-    return res.json({ optimized: "" });
+    return res.json({ optimized: "", matches: [], unmatched: [] });
   }
 
   const ai = getGeminiClient();
 
+  // If the discipline is 'sharepoint' (Gestión Plan de Trabajo ITP), apply specialized matching logic
+  if (id === "sharepoint") {
+    const localResult = localMatchTasks(cleanComment, tasks);
+    
+    if (!ai) {
+      console.log("Optimizando 'sharepoint' sin API Key (activando fallback local)...");
+      const fallbackOptimized = generateFallbackOptimizedComment(id, cleanComment);
+      return res.json({
+        optimized: fallbackOptimized,
+        matches: localResult.matches,
+        unmatched: localResult.unmatched
+      });
+    }
+
+    const systemPrompt = `Actúas como un Ingeniero de Software Senior y Experto en Inteligencia Artificial para un sistema de gestión de tecnología de procesos de Ecopetrol.
+Tu tarea consiste en procesar y optimizar el comentario de avance operativo redactado por el usuario en lenguaje natural para la Gestión del Plan de Trabajo ITP, e identificar de forma inteligente qué registros del plan deben marcarse como COMPLETADOS.
+
+Lista de actividades del Plan de Trabajo actual:
+${JSON.stringify(tasks.map((t: any) => ({ id: t.id, campo: t.campo, area: t.area, proyecto: t.proyecto, paquete: t.paquete, estado: t.estado })), null, 2)}
+
+Sigue minuciosamente estas directrices:
+1. Optimiza el comentario del usuario (corrigiendo ortografía, gramática, mejorando la redacción, removiendo redundancias y usando un tono técnico, formal y ejecutivo de Ecopetrol). Genera un máximo de 2 o 3 viñetas breves que comiencen exactamente con '• '. El texto resultante de las viñetas no debe inventar información ni cambiar nombres/códigos de proyectos/paquetes.
+2. Identifica en el comentario original cada mención de proyectos y paquetes asociados. El usuario puede escribir la información de manera informal o aproximada.
+3. Para cada mención de proyecto + paquete, busca en la "Lista de actividades del Plan de Trabajo actual" utilizando búsqueda inteligente (comparación semántica, coincidencias aproximadas/fuzzy, normalización, abreviaciones, nombres parciales o variaciones comunes).
+   - REGLA DE VALIDACIÓN OBLIGATORIA: Para que una actividad coincida con éxito, debes encontrar coincidencia para el PROYECTO y coincidencia para el PAQUETE asociado dentro de un MISMO registro de la lista de actividades.
+   - Si un registro coincide plenamente en ambos aspectos con alta confianza, márcalo en el arreglo de "matches" indicando su matchedTaskId exacto.
+   - Si no estás seguro de la relación, la confianza es baja, o coincide con múltiples registros posibles, agrégalo al arreglo "unmatched" explicando la razón.
+4. Genera una salida estructurada en formato JSON estricto que cumpla exactamente con el siguiente esquema:
+{
+  "optimized": "El comentario optimizado en viñetas (formato string con saltos de línea y viñetas con '• ')",
+  "matches": [
+    {
+      "matchedTaskId": "ID_del_registro_encontrado",
+      "proyectoIdentified": "Código o nombre del proyecto identificado en el texto",
+      "paqueteIdentified": "Código o nombre del paquete identificado en el texto",
+      "confidence": "high",
+      "explanation": "Breve explicación de por qué coincide"
+    }
+  ],
+  "unmatched": [
+    {
+      "proyectoIdentified": "Proyecto identificado que no se pudo emparejar con confianza",
+      "paqueteIdentified": "Paquete identificado que no se pudo emparejar con confianza",
+      "reason": "Razón de la falta de confianza o ambigüedad"
+    }
+  ]
+}
+
+Comentario del usuario:
+"${cleanComment}"
+
+Responde únicamente con el JSON válido. No incluyas explicaciones de preámbulo, markdown o bloques adicionales.`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: systemPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              optimized: { type: Type.STRING },
+              matches: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    matchedTaskId: { type: Type.STRING },
+                    proyectoIdentified: { type: Type.STRING },
+                    paqueteIdentified: { type: Type.STRING },
+                    confidence: { type: Type.STRING },
+                    explanation: { type: Type.STRING }
+                  },
+                  required: ["matchedTaskId", "proyectoIdentified", "paqueteIdentified", "confidence", "explanation"]
+                }
+              },
+              unmatched: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    proyectoIdentified: { type: Type.STRING },
+                    paqueteIdentified: { type: Type.STRING },
+                    reason: { type: Type.STRING }
+                  },
+                  required: ["proyectoIdentified", "paqueteIdentified", "reason"]
+                }
+              }
+            },
+            required: ["optimized", "matches", "unmatched"]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || "{}");
+      return res.json({
+        optimized: parsed.optimized || generateFallbackOptimizedComment(id, cleanComment),
+        matches: parsed.matches || localResult.matches,
+        unmatched: parsed.unmatched || localResult.unmatched
+      });
+    } catch (err) {
+      console.error("Error al procesar 'sharepoint' con Gemini, usando fallback local:", err);
+      const fallbackOptimized = generateFallbackOptimizedComment(id, cleanComment);
+      return res.json({
+        optimized: fallbackOptimized,
+        matches: localResult.matches,
+        unmatched: localResult.unmatched
+      });
+    }
+  }
+
+  // Fallback for standard disciplines (edp, continuidad, mocs, revision, ia_itp)
   let systemPrompt = `Actúas como un redactor ejecutivo y experto de alto nivel en Seguridad de Procesos para un comité gerencial de Ecopetrol.
 Tu única tarea consiste en corregir, optimizar, pulir gramaticalmente y refinar técnicamente el comentario de avance operativo suministrado por el usuario.
 

@@ -50,11 +50,13 @@ export default function App() {
   // Core Persisted States with local storage fallbacks
   const [tasks, setTasks] = useState<Task[]>(() => {
     const dbVersion = localStorage.getItem("gor_db_version");
-    const isNewDb = dbVersion === "v2";
+    const isNewDb = dbVersion === "v3";
     
     if (!isNewDb) {
       localStorage.removeItem("gor_tasks");
-      localStorage.setItem("gor_db_version", "v2");
+      localStorage.removeItem("gor_disciplines");
+      localStorage.removeItem("gor_insights");
+      localStorage.setItem("gor_db_version", "v3");
     }
 
     const saved = isNewDb ? localStorage.getItem("gor_tasks") : null;
@@ -98,8 +100,9 @@ export default function App() {
       const newElem = {
         id: "ia_itp",
         name: "Implementación de recursos tecnológicos potenciados con IA para ITP",
-        status: "Completado",
-        comment: "Se inició la fase de evaluación para la integración de herramientas de IA generativa y visión artificial en los procesos de inspección técnica de ITP."
+        status: "Pendiente",
+        comment: "",
+        optimizedComment: ""
       };
       if (revisionIndex !== -1) {
         loaded = [
@@ -236,7 +239,7 @@ export default function App() {
   };
 
   // Discipline Mutator
-  const handleUpdateComment = (id: string, newComment: string) => {
+  const handleUpdateComment = (id: string, newComment: string, optimizedVal?: string) => {
     setDisciplines((prev) =>
       prev.map((d) => {
         if (d.id === id) {
@@ -244,6 +247,7 @@ export default function App() {
           return {
             ...d,
             comment: newComment,
+            optimizedComment: typeof optimizedVal === "string" ? optimizedVal : newComment,
             status: hasComment ? "Completado" : "Pendiente"
           };
         }
@@ -327,7 +331,7 @@ export default function App() {
       const response = await fetch("/api/optimize-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, comment }),
+        body: JSON.stringify({ id, comment, tasks }),
       });
 
       if (!response.ok) {
@@ -342,6 +346,15 @@ export default function App() {
           d.id === id ? { ...d, optimizedComment: optimizedText } : d
         )
       );
+
+      if (id === "sharepoint") {
+        return {
+          optimized: optimizedText,
+          matches: data.matches || [],
+          unmatched: data.unmatched || []
+        };
+      }
+
       return optimizedText;
     } catch (error) {
       console.warn("Error al optimizar comentario con IA (activando fallback local):", error);
@@ -353,8 +366,49 @@ export default function App() {
           d.id === id ? { ...d, optimizedComment: localOptimized } : d
         )
       );
+
+      if (id === "sharepoint") {
+        // Run simple local regex matches client-side in case of API failure
+        const matches: any[] = [];
+        tasks.forEach((t) => {
+          if (t.estado !== "Completado") {
+            const projId = t.proyecto.toLowerCase().split("_")[0];
+            const paqId = t.paquete.toLowerCase();
+            const commentLower = comment.toLowerCase();
+            if (commentLower.includes(projId) && commentLower.includes(paqId)) {
+              matches.push({
+                matchedTaskId: t.id,
+                proyectoIdentified: t.proyecto,
+                paqueteIdentified: t.paquete,
+                explanation: "Coincidencia local (enlace de contingencia fuera de línea)"
+              });
+            }
+          }
+        });
+        return {
+          optimized: localOptimized,
+          matches,
+          unmatched: []
+        };
+      }
+
       return localOptimized;
     }
+  };
+
+  const handleApplySharepointMatches = (matchedIds: string[]) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (matchedIds.includes(t.id)) {
+          return {
+            ...t,
+            estado: "Completado" as const,
+            avance: t.peso,
+          };
+        }
+        return t;
+      })
+    );
   };
 
   // Insights Mutator
@@ -603,6 +657,8 @@ export default function App() {
                   onUpdateInsights={handleUpdateInsights}
                   onOptimizeDiscipline={handleOptimizeDiscipline}
                   contexto={reportContext}
+                  tasks={tasks}
+                  onApplySharepointMatches={handleApplySharepointMatches}
                 />
               )}
 
