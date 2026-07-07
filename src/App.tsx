@@ -118,7 +118,7 @@ export default function App() {
         name = "Datos técnicos relevantes - Revisión de ITP";
       }
       if (d.id === "sharepoint") {
-        name = "Gestión Plan de Trabajo ITP";
+        name = "Gestión Herramienta de Solución Logistica Operativa (SharePoint)";
       }
       if (d.id === "ia_itp") {
         name = "Implementación de recursos tecnológicos potenciados con IA para ITP";
@@ -291,7 +291,7 @@ export default function App() {
     }
 
     let result = fallbackBullets.slice(0, 3).join("\n");
-    if ((id === "continuidad" || id === "mocs" || id === "edp" || id === "revision" || id === "ia_itp") && result.length > 280) {
+    if (id === "continuidad" && result.length > 280) {
       const lines = result.split("\n").map(l => l.trim()).filter(l => l.length > 0);
       let resultLines: string[] = [];
       let currentLen = 0;

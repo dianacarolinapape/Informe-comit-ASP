@@ -94,7 +94,7 @@ function generateFallbackOptimizedComment(id: string, cleanComment: string): str
   }
 
   let result = fallbackBullets.slice(0, 3).join("\n");
-  if (id === "continuidad" || id === "mocs" || id === "edp" || id === "revision" || id === "ia_itp") {
+  if (id === "continuidad") {
     result = enforceCharacterLimit(result, 280);
   }
   return result;
@@ -219,7 +219,7 @@ Sigue rigurosamente estas pautas:
 4. Conserva intactos de forma obligatoria todos los códigos numéricos de proyectos (ej. "ECU17049", "ECU17114"), nombres de clústeres, equipos (ej. "CASE-0021", "MOCs", "turbobombas", "P&IDs"), cifras numéricas, porcentajes, fechas y nombres de instalaciones o personas.
 5. NO inventes información, no agregues datos ficticios, no cambies fechas y no agregues supuestos. Conserva el significado técnico y operativo exacto expresado por el usuario.`;
 
-  if (id === "continuidad" || id === "mocs" || id === "edp" || id === "revision" || id === "ia_itp") {
+  if (id === "continuidad") {
     systemPrompt += `\n6. REGLA DE SÍNTESIS EXTREMA OBLIGATORIA: El resultado final DEBE tener un máximo absoluto de 280 caracteres (incluyendo espacios, saltos de línea y viñetas). Prioriza los avances, resultados e hitos técnicos de mayor relevancia gerencial, eliminando cualquier detalle secundario o explicaciones de relleno. Sé sumamente conciso, ejecutivo, y redacta de tal forma que se lea completo en menos de 10 segundos.`;
   }
 
@@ -250,8 +250,8 @@ Sigue rigurosamente estas pautas:
         .join("\n");
     }
 
-    // Force strict character limit check for short cards
-    if (id === "continuidad" || id === "mocs" || id === "edp" || id === "revision" || id === "ia_itp") {
+    // Force strict character limit check for 'continuidad'
+    if (id === "continuidad") {
       optimized = enforceCharacterLimit(optimized, 280);
     }
 

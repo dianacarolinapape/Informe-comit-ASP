@@ -420,12 +420,8 @@ export default function SlidesView({ tasks, team, disciplines, contexto }: Slide
       align: "center",
       fontFace: "Arial"
     });
-    const revisionBullets = getBulletsText("revision", [
-      `Verificación sistemática de diagramas de tuberías e instrumentación (P&IDs) y fichas de seguridad de procesos para mitigar riesgos en campo, junto al análisis riguroso de impacto operacional y aseguramiento normativo en la actualización de la base técnica documental del ${contexto?.gerencia || 'GOR'}.`
-    ]);
-
     slide3.addText(
-      revisionBullets.map(b => b.startsWith("Verificación sistemática") ? b : `• ${b}`).join("\n"),
+      "Verificación sistemática de diagramas de tuberías e instrumentación (P&IDs) y fichas de seguridad de procesos para mitigar riesgos en campo, junto al análisis riguroso de impacto operacional y aseguramiento normativo en la actualización de la base técnica documental del GOR.",
       {
         x: leftX + 0.15,
         y: 2.9,
@@ -530,23 +526,15 @@ export default function SlidesView({ tasks, team, disciplines, contexto }: Slide
       align: "center",
       fontFace: "Arial"
     });
-    const iaItpBullets = getBulletsText("ia_itp", [
-      `App Móvil (100%): Información disponible desde cualquier ubicación del ${contexto?.gerencia || "GOR"}.`,
-      "Power BI + IA: Listados maestros con búsqueda avanzada y previsualización gráfica."
-    ]);
-
-    slide3.addText(
-      iaItpBullets.map(b => b.startsWith("App Móvil") || b.startsWith("Power BI") ? b : `• ${b}`).join("\n"),
-      {
-        x: rightX + 0.15,
-        y: 2.65,
-        w: rightW - 0.3,
-        h: 0.8,
-        fontSize: 8,
-        color: "4F4F4F",
-        fontFace: "Arial"
-      }
-    );
+    slide3.addText("• App Móvil (100%): Información disponible desde cualquier ubicación del GOR.\n• Power BI + IA: Listados maestros con búsqueda avanzada y previsualización gráfica.", {
+      x: rightX + 0.15,
+      y: 2.65,
+      w: rightW - 0.3,
+      h: 0.8,
+      fontSize: 8,
+      color: "4F4F4F",
+      fontFace: "Arial"
+    });
 
     // Card 3: Canal de Comunicación + Accesses
     slide3.addShape(pptx.ShapeType.rect, { x: rightX, y: 3.7, w: rightW, h: 1.7, fill: { color: "FFFFFF" }, line: { color: "DDDDDD", width: 1 } });
@@ -968,11 +956,9 @@ export default function SlidesView({ tasks, team, disciplines, contexto }: Slide
                   </div>
                   
                   <div className="bg-slate-50/80 p-2 rounded border border-slate-100 flex-1 flex flex-col justify-center my-1 overflow-y-auto">
-                    {renderOptimizedBullets("revision", (
-                      <p className="text-[7.5px] text-slate-700 leading-relaxed font-medium">
-                        Verificación sistemática de diagramas de tuberías e instrumentación (P&IDs) y fichas de seguridad de procesos para mitigar riesgos en campo, junto al análisis riguroso de impacto operacional y aseguramiento normativo en la actualización de la base técnica documental del {contexto?.gerencia || 'GOR'}.
-                      </p>
-                    ))}
+                    <p className="text-[7.5px] text-slate-700 leading-relaxed font-medium">
+                      Verificación sistemática de diagramas de tuberías e instrumentación (P&IDs) y fichas de seguridad de procesos para mitigar riesgos en campo, junto al análisis riguroso de impacto operacional y aseguramiento normativo en la actualización de la base técnica documental del {contexto?.gerencia || 'GOR'}.
+                    </p>
                   </div>
                 </div>
 
@@ -1071,7 +1057,7 @@ export default function SlidesView({ tasks, team, disciplines, contexto }: Slide
 
                 </div>
 
-                 {/* 2. Recursos Tecnológicos IA block */}
+                {/* 2. Recursos Tecnológicos IA block */}
                 <div className="bg-white/95 rounded-xl p-2.5 border border-slate-200 shadow-sm mt-1.5 flex flex-col justify-between">
                   
                   {/* Purple header band */}
@@ -1079,27 +1065,23 @@ export default function SlidesView({ tasks, team, disciplines, contexto }: Slide
                     Implementación de recursos Tecnológicos potenciados con IA
                   </div>
 
-                  <div className="bg-slate-50/80 p-2 rounded border border-slate-100 flex-1 flex flex-col justify-center my-0.5 overflow-y-auto">
-                    {renderOptimizedBullets("ia_itp", (
-                      <div className="grid grid-cols-2 gap-2 text-[7.5px] leading-tight">
-                        <div className="border-r border-slate-100 pr-1.5 flex flex-col justify-between">
-                          <div className="font-bold text-slate-800 flex items-center gap-1">
-                            <Smartphone className="w-3 h-3 text-[#1b0a45]" />
-                            <span>App Móvil</span>
-                          </div>
-                          <div className="text-[9px] font-black text-purple-700">[100%]</div>
-                          <span className="text-slate-500">Información disponible desde cualquier ubicación de {contexto?.gerencia || 'GOR'}.</span>
-                        </div>
-
-                        <div className="flex flex-col justify-between pl-1">
-                          <div className="font-bold text-slate-800 flex items-center gap-1">
-                            <BarChart2 className="w-3 h-3 text-[#1b0a45]" />
-                            <span>Power BI + IA</span>
-                          </div>
-                          <span className="text-slate-500">Listados maestros con búsqueda avanzada y previsualización gráfica.</span>
-                        </div>
+                  <div className="grid grid-cols-2 gap-2 text-[7.5px] leading-tight">
+                    <div className="border-r border-slate-100 pr-1.5 flex flex-col justify-between">
+                      <div className="font-bold text-slate-800 flex items-center gap-1">
+                        <Smartphone className="w-3 h-3 text-[#1b0a45]" />
+                        <span>App Móvil</span>
                       </div>
-                    ))}
+                      <div className="text-[9px] font-black text-purple-700">[100%]</div>
+                      <span className="text-slate-500">Información disponible desde cualquier ubicación de {contexto?.gerencia || 'GOR'}.</span>
+                    </div>
+
+                    <div className="flex flex-col justify-between pl-1">
+                      <div className="font-bold text-slate-800 flex items-center gap-1">
+                        <BarChart2 className="w-3 h-3 text-[#1b0a45]" />
+                        <span>Power BI + IA</span>
+                      </div>
+                      <span className="text-slate-500">Listados maestros con búsqueda avanzada y previsualización gráfica.</span>
+                    </div>
                   </div>
 
                 </div>

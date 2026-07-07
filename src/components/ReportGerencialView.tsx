@@ -61,15 +61,8 @@ export default function ReportGerencialView({
 
   // Guardar Avance of a single discipline with real-time AI optimization
   const saveComment = async (id: string) => {
-    const textVal = localComments[id] || "";
-    const savedComment = disciplines.find(d => d.id === id)?.comment || "";
-    
-    // Solo guardar y optimizar si el comentario realmente cambió
-    if (textVal.trim() === savedComment.trim()) {
-      return;
-    }
-
     setSavingId(id);
+    const textVal = localComments[id] || "";
     onUpdateComment(id, textVal);
     
     // Simulate slight save latency to let user feel the feedback
@@ -439,29 +432,22 @@ Ecopetrol S.A.`;
         {disciplines.map((discipline) => (
           <div
             key={discipline.id}
-            className={`bg-white border rounded-xl p-5 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all group h-[360px] ${
-              optimizingId === discipline.id
-                ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-lg animate-pulse"
-                : "border-slate-200 hover:border-ecogreen-primary/40"
-            }`}
+            className="bg-white border border-slate-200 hover:border-ecogreen-primary/40 rounded-xl p-5 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all group h-[360px]"
           >
             {/* Discipline header with status chip */}
             <div className="flex items-start justify-between gap-2 shrink-0">
               <h3 className="font-bold text-sm sm:text-base font-headline text-slate-800 leading-snug group-hover:text-ecogreen-primary transition-colors">
                 {discipline.name}
               </h3>
-              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${getDisciplineStatusBadge(discipline.status)}`}>
-                  {discipline.status}
-                </span>
-              </div>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${getDisciplineStatusBadge(discipline.status)}`}>
+                {discipline.status}
+              </span>
             </div>
 
-            {/* Comment field text area with auto-save on blur */}
+            {/* Comment field text area */}
             <textarea
               value={localComments[discipline.id] ?? ""}
               onChange={(e) => handleCommentChange(discipline.id, e.target.value)}
-              onBlur={() => saveComment(discipline.id)}
               placeholder="Escribe el avance operativo de seguridad de procesos aquí..."
               className="w-full flex-1 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:bg-white focus:border-ecogreen-primary focus:ring-1 focus:ring-ecogreen-primary transition-all resize-none"
             ></textarea>

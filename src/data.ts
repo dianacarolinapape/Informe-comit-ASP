@@ -371,7 +371,7 @@ export const initialDisciplines: Discipline[] = [
   },
   {
     id: "sharepoint",
-    name: "Gestión Plan de Trabajo ITP",
+    name: "Gestión Herramienta de Solución Logistica Operativa (SharePoint)",
     status: "Completado",
     comment: "Falta actualizar el registro de las lecciones aprendidas del incidente del trimestre pasado. La plataforma reportó problemas de acceso para usuarios de campo durante la semana pasada.",
     optimizedComment: "• Pendiente consolidación y carga de lecciones aprendidas sobre el evento operacional del trimestre anterior.\n• Reporte de intermitencias técnicas en el acceso de usuarios de campo a la plataforma SharePoint.\n• Enlace activo con TI para estabilización del servicio y regularización de accesos."
@@ -406,7 +406,7 @@ export const initialInsights: SmartInsights = {
   ],
   alertas: [
     "Riesgo de retraso en Continuidad Operativa por falta de insumos críticos.",
-    "Inconsistencia detectada en la carga de datos de la Gestión Plan de Trabajo ITP.",
+    "Inconsistencia detectada en la carga de datos de la Gestión Herramienta de Solución Logistica Operativa ( SharePoint).",
   ],
 };
 
