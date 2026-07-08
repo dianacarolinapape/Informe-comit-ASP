@@ -41,6 +41,7 @@ export default function WorkPlanView({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "Sin iniciar" | "Completado">("ALL");
   const [areaFilter, setAreaFilter] = useState<string>("ALL");
+  const [gerenciaFilter, setGerenciaFilter] = useState<"ALL" | "GOR" | "GPA">("ALL");
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -226,7 +227,13 @@ export default function WorkPlanView({
       (t.mes || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "ALL" || t.estado === statusFilter;
     const matchesArea = areaFilter === "ALL" || t.area === areaFilter;
-    return matchesSearch && matchesStatus && matchesArea;
+    
+    // Determine gerencia based on campo
+    const isGPA = t.campo === "Putumayo" || t.campo === "Huila";
+    const taskGerencia = isGPA ? "GPA" : "GOR";
+    const matchesGerencia = gerenciaFilter === "ALL" || taskGerencia === gerenciaFilter;
+
+    return matchesSearch && matchesStatus && matchesArea && matchesGerencia;
   });
 
   // Pagination Logic
@@ -405,6 +412,24 @@ export default function WorkPlanView({
                 {uniqueAreas.map((area) => (
                   <option key={area} value={area}>{area}</option>
                 ))}
+              </select>
+              <Filter className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Gerencia Filter */}
+            <div className="relative" id="gerencia-filter-container">
+              <select
+                id="gerencia-filter-select"
+                value={gerenciaFilter}
+                onChange={(e) => {
+                  setGerenciaFilter(e.target.value as any);
+                  setCurrentPage(1);
+                }}
+                className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-ecogreen-primary text-slate-600 font-medium cursor-pointer"
+              >
+                <option value="ALL">Todas las Gerencias</option>
+                <option value="GOR">GOR</option>
+                <option value="GPA">GPA</option>
               </select>
               <Filter className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>

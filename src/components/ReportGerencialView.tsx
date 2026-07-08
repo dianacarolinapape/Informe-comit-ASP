@@ -20,7 +20,7 @@ import {
 interface ReportGerencialViewProps {
   disciplines: Discipline[];
   insights: SmartInsights;
-  onUpdateComment: (id: string, newComment: string) => void;
+  onUpdateComment: (id: string, newComment: string, optimizedComment?: string) => void;
   onUpdateInsights: (newInsights: SmartInsights) => void;
   onOptimizeDiscipline?: (id: string, comment: string) => Promise<string>;
   contexto: ContextoInforme | null;
@@ -42,6 +42,18 @@ export default function ReportGerencialView({
     return initial;
   });
 
+  // Track the multi-step workflow stage for each discipline:
+  // "raw": draft or modified by user, button shows "Automatizar"
+  // "automated": optimized by IA but not yet saved, button shows "Guardar Avance"
+  // "saved": saved and synced, button shows "Modificar Avance" (reverts to "raw" if user edits again)
+  const [workflowStages, setWorkflowStages] = useState<{ [key: string]: "raw" | "automated" | "saved" }>(() => {
+    const stages: { [key: string]: "raw" | "automated" | "saved" } = {};
+    disciplines.forEach((d) => {
+      stages[d.id] = (d.comment && d.comment.trim().length > 0) ? "saved" : "raw";
+    });
+    return stages;
+  });
+
   const [savingId, setSavingId] = useState<string | null>(null);
   const [optimizingId, setOptimizingId] = useState<string | null>(null);
   const [isGeneratingIA, setIsGeneratingIA] = useState(false);
@@ -56,38 +68,54 @@ export default function ReportGerencialView({
   // Handle local comment input
   const handleCommentChange = (id: string, value: string) => {
     setLocalComments((prev) => ({ ...prev, [id]: value }));
-    onUpdateComment(id, value);
+    // Step 6: "Si el usuario vuelve a editar el contenido, todo el proceso se ejecuta nuevamente."
+    // Any keystroke transitions back to raw, so they must run Automatizar again or can save
+    setWorkflowStages((prev) => ({ ...prev, [id]: "raw" }));
   };
 
   // Guardar Avance of a single discipline with real-time AI optimization
   const saveComment = async (id: string) => {
-    setSavingId(id);
+    const stage = workflowStages[id] || "raw";
     const textVal = localComments[id] || "";
-    onUpdateComment(id, textVal);
-    
-    // Simulate slight save latency to let user feel the feedback
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    setSavingId(null);
 
-    const isNowCompleted = textVal.trim().length > 0;
-
-    if (isNowCompleted && onOptimizeDiscipline) {
+    if (stage === "raw") {
+      // Step 2: Procesamiento mediante Inteligencia Artificial
+      if (!textVal.trim()) {
+        triggerToast("Por favor escriba información base para poder automatizar.");
+        return;
+      }
+      
       setOptimizingId(id);
       try {
-        await onOptimizeDiscipline(id, textVal);
-        triggerToast("¡Avance guardado y optimizado con IA (Gemini)!");
+        if (onOptimizeDiscipline) {
+          const optimizedText = await onOptimizeDiscipline(id, textVal);
+          // Set textarea content to the optimized response text (Step 3: Se genera una versión optimizada)
+          setLocalComments((prev) => ({ ...prev, [id]: optimizedText }));
+          // Move to automated stage (Step 4: El usuario aprueba o modifica la versión optimizada)
+          setWorkflowStages((prev) => ({ ...prev, [id]: "automated" }));
+          triggerToast("✨ ¡Texto optimizado por IA! Revise y guarde su avance.");
+        }
       } catch (err) {
-        console.error("AI Optimization failed, saved text normally:", err);
-        triggerToast("Avance guardado con éxito (error al optimizar con IA).");
+        console.error("Error optimizing with IA:", err);
+        triggerToast("Error al optimizar con IA. Se conserva el texto original.");
       } finally {
         setOptimizingId(null);
       }
     } else {
-      triggerToast(
-        isNowCompleted 
-          ? "Avance guardado con éxito. Estado actualizado a 'Completado'." 
-          : "Avance vacío guardado. Estado revertido a 'Pendiente'."
-      );
+      // stage is "automated" or "saved" -> Step 5: La información se sincroniza automáticamente
+      setSavingId(id);
+      
+      // Update parent comment and optimizedComment together!
+      onUpdateComment(id, textVal, textVal);
+      
+      // Move to saved stage
+      setWorkflowStages((prev) => ({ ...prev, [id]: "saved" }));
+      
+      // Simulate slight save latency to let user feel the feedback
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setSavingId(null);
+      
+      triggerToast("💾 ¡Avance guardado y sincronizado automáticamente con la Diapositiva 3!");
     }
   };
 
@@ -239,12 +267,6 @@ Ecopetrol S.A.`;
               </>
             )}
           </button>
-
-          {/* Connected users indicator matching Image 4 */}
-          <span className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 rounded-full text-xs font-bold text-slate-600 border border-slate-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-            <span>12 Activos ahora</span>
-          </span>
         </div>
       </header>
 
@@ -429,54 +451,97 @@ Ecopetrol S.A.`;
 
       {/* Disciplines Bento Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {disciplines.map((discipline) => (
-          <div
-            key={discipline.id}
-            className="bg-white border border-slate-200 hover:border-ecogreen-primary/40 rounded-xl p-5 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all group h-[360px]"
-          >
-            {/* Discipline header with status chip */}
-            <div className="flex items-start justify-between gap-2 shrink-0">
-              <h3 className="font-bold text-sm sm:text-base font-headline text-slate-800 leading-snug group-hover:text-ecogreen-primary transition-colors">
-                {discipline.name}
-              </h3>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${getDisciplineStatusBadge(discipline.status)}`}>
-                {discipline.status}
-              </span>
-            </div>
-
-            {/* Comment field text area */}
-            <textarea
-              value={localComments[discipline.id] ?? ""}
-              onChange={(e) => handleCommentChange(discipline.id, e.target.value)}
-              placeholder="Escribe el avance operativo de seguridad de procesos aquí..."
-              className="w-full flex-1 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:bg-white focus:border-ecogreen-primary focus:ring-1 focus:ring-ecogreen-primary transition-all resize-none"
-            ></textarea>
-
-            {/* Submit save button */}
-            <button
-              onClick={() => saveComment(discipline.id)}
-              disabled={savingId === discipline.id || optimizingId === discipline.id}
-              className="flex items-center gap-1.5 bg-[#006d38] hover:bg-[#004e28] text-white py-1.5 px-3.5 rounded-lg font-bold text-xs self-end shadow-sm active:scale-95 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
+        {disciplines.map((discipline) => {
+          const stage = workflowStages[discipline.id] || "raw";
+          return (
+            <div
+              key={discipline.id}
+              className={`bg-white border hover:border-ecogreen-primary/40 rounded-xl p-5 flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition-all group h-[380px] ${
+                stage === "automated" ? "border-emerald-300 ring-2 ring-emerald-50" : "border-slate-200"
+              }`}
             >
-              {savingId === discipline.id ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Guardando...</span>
-                </>
-              ) : optimizingId === discipline.id ? (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 animate-pulse text-yellow-300 fill-yellow-300" />
-                  <span>Optimizando...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Guardar Avance</span>
-                </>
-              )}
-            </button>
-          </div>
-        ))}
+              {/* Discipline header with status chip */}
+              <div className="flex items-start justify-between gap-2 shrink-0">
+                <h3 className="font-bold text-sm sm:text-base font-headline text-slate-800 leading-snug group-hover:text-ecogreen-primary transition-colors">
+                  {discipline.name}
+                </h3>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 ${getDisciplineStatusBadge(discipline.status)}`}>
+                  {discipline.status}
+                </span>
+              </div>
+
+              {/* Comment field text area */}
+              <div className="flex-1 flex flex-col justify-between">
+                <textarea
+                  value={localComments[discipline.id] ?? ""}
+                  onChange={(e) => handleCommentChange(discipline.id, e.target.value)}
+                  placeholder="Escriba aquí el avance del mes..."
+                  className={`w-full flex-1 text-sm text-slate-700 rounded-lg p-3 outline-none transition-all resize-none ${
+                    stage === "automated"
+                      ? "bg-emerald-50/30 border-2 border-emerald-400 focus:bg-white focus:border-emerald-500"
+                      : "bg-slate-50 border border-slate-200 focus:bg-white focus:border-ecogreen-primary focus:ring-1 focus:ring-ecogreen-primary"
+                  }`}
+                ></textarea>
+
+                {stage === "automated" && (
+                  <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1.5 mt-2 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 animate-fadeIn shrink-0">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400 animate-pulse shrink-0" />
+                    <span>Propuesta de IA lista. Presione "Guardar Avance" para sincronizar.</span>
+                  </div>
+                )}
+                
+                {stage === "saved" && (
+                  <div className="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5 mt-2 bg-slate-50 px-2 py-1 rounded border border-slate-100 shrink-0">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Avance guardado y sincronizado con Diapositiva 3.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit save button */}
+              <button
+                onClick={() => saveComment(discipline.id)}
+                disabled={savingId === discipline.id || optimizingId === discipline.id}
+                className={`flex items-center gap-1.5 py-2 px-4 rounded-lg font-bold text-xs self-end shadow-sm active:scale-95 transition-all disabled:opacity-50 shrink-0 cursor-pointer ${
+                  savingId === discipline.id || optimizingId === discipline.id
+                    ? "bg-slate-100 text-slate-400 border border-slate-200"
+                    : stage === "raw"
+                    ? "bg-[#006d38] hover:bg-[#004e28] text-white"
+                    : stage === "automated"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                }`}
+              >
+                {savingId === discipline.id ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : optimizingId === discipline.id ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-400 fill-amber-300" />
+                    <span>Optimizando...</span>
+                  </>
+                ) : stage === "raw" ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Automatizar</span>
+                  </>
+                ) : stage === "automated" ? (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Guardar Avance</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Modificar Avance</span>
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
       </section>
 
 

@@ -351,44 +351,44 @@ export const initialDisciplines: Discipline[] = [
   {
     id: "edp",
     name: "Proyectos EDP",
-    status: "Completado",
-    comment: "Se completó la revisión preliminar de los P&IDs para el sistema de reinyección. El cronograma avanza con un 5% de holgura y se han alineado los entregables de ingeniería con el contratista principal sin desviaciones.",
-    optimizedComment: "• Revisión preliminar de P&IDs completada satisfactoriamente para el sistema de reinyección.\n• Cronograma del proyecto con holgura controlada del 5%.\n• Alineación exitosa de entregables de ingeniería con el contratista principal sin desviaciones operacionales."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
   {
     id: "continuidad",
     name: "Proyectos Continuidad Operativa",
-    status: "Completado",
-    comment: "Se reporta un atraso de dos semanas en la llegada de repuestos para las turbobombas de Castilla 2. Riesgo inminente de parada no programada si no se prioriza la compra. Se requiere apoyo gerencial para destrabar logística.",
-    optimizedComment: "• Retraso logístico de 14 días en el suministro de componentes críticos de repuesto para turbobombas de Castilla 2.\n• Identificación preventiva de riesgo de indisponibilidad operativa no programada.\n• Se requiere escalamiento de compras y soporte logístico inmediato para mitigar el impacto."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
   {
     id: "mocs",
     name: "MOCs",
-    status: "Completado",
-    comment: "Se registraron 4 nuevos controles de cambio técnicos en la plataforma. Todos se encuentran en revisión de seguridad previa. Se observa una mejora del 15% en el tiempo de cierre de acciones de pre-arranque.",
-    optimizedComment: "• Registro e inicio de análisis de seguridad para 4 nuevos controles de cambio técnicos (MOC).\n• Optimización del 15% en los tiempos de respuesta para el cierre de acciones preventivas pre-arranque.\n• Cumplimiento estricto del flujo de revisión técnica estipulado."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
   {
     id: "sharepoint",
     name: "Gestión Herramienta de Solución Logistica Operativa (SharePoint)",
-    status: "Completado",
-    comment: "Falta actualizar el registro de las lecciones aprendidas del incidente del trimestre pasado. La plataforma reportó problemas de acceso para usuarios de campo durante la semana pasada.",
-    optimizedComment: "• Pendiente consolidación y carga de lecciones aprendidas sobre el evento operacional del trimestre anterior.\n• Reporte de intermitencias técnicas en el acceso de usuarios de campo a la plataforma SharePoint.\n• Enlace activo con TI para estabilización del servicio y regularización de accesos."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
   {
     id: "revision",
     name: "Datos técnicos relevantes - Revisión de ITP",
-    status: "Completado",
-    comment: "Se recopilaron los indicadores HSE del mes. Se están comparando las metas corporativas con el desempeño real de la estación de bombeo GOR.",
-    optimizedComment: "• Consolidación final de indicadores clave de desempeño (KPI) HSE correspondientes al mes actual.\n• Análisis comparativo en curso entre las metas del Plan de Negocio Corporativo y el desempeño real en GOR.\n• Monitoreo enfocado en la mejora continua de la confiabilidad operacional."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
   {
     id: "ia_itp",
     name: "Implementación de recursos tecnológicos potenciados con IA para ITP",
-    status: "Completado",
-    comment: "Se inició la fase de evaluación para la integración de herramientas de IA generativa y visión artificial en los procesos de inspección técnica de ITP.",
-    optimizedComment: "• Inicio formal de la fase de diagnóstico tecnológico para la integración de Inteligencia Artificial Generativa e inspección asistida por visión en ITP.\n• Definición de casos de uso prioritarios con foco en confiabilidad y análisis preventivo de integridad."
+    status: "Pendiente",
+    comment: "",
+    optimizedComment: ""
   },
 ];
 

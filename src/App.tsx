@@ -23,7 +23,6 @@ import {
   Compass,
   AlertTriangle,
   FileText,
-  Settings,
   HelpCircle,
   Home,
   LogOut,
@@ -31,6 +30,12 @@ import {
   ShieldCheck,
   X
 } from "lucide-react";
+import {
+  saveReportToCloud,
+  loadReportFromCloud,
+  getSavedReportsList,
+  isFirebaseInitialized
+} from "./lib/firebase";
 
 export default function App() {
   // Contexto Global del Informe State
@@ -47,14 +52,37 @@ export default function App() {
   // Navigation State: "portada" is the initial screen.
   const [activeTab, setActiveTab] = useState<"portada" | "plan" | "reporte" | "tecnologia" | "diapositivas">("portada");
 
+  // Firebase Integration State
+  const [cloudReportId, setCloudReportId] = useState<string>(() => {
+    const saved = localStorage.getItem("firebase_report_id");
+    if (saved) return saved;
+    const contextSaved = localStorage.getItem("report_context");
+    const context = contextSaved ? JSON.parse(contextSaved) : null;
+    if (context) {
+      return `reporte_${context.gerencia.toLowerCase()}_${context.mes.toLowerCase()}_${context.ano}`;
+    }
+    return "reporte_gor_abril_2026";
+  });
+
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [cloudStatusMsg, setCloudStatusMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [lastCloudSaved, setLastCloudSaved] = useState<string | null>(() => {
+    return localStorage.getItem("firebase_last_saved");
+  });
+  const [autoCloudSync, setAutoCloudSync] = useState<boolean>(() => {
+    return localStorage.getItem("firebase_auto_sync") === "true";
+  });
+  const [savedCloudReports, setSavedCloudReports] = useState<{ id: string; updatedAt: string; gerencia?: string; mes?: string }[]>([]);
+  const [showCloudReportsDropdown, setShowCloudReportsDropdown] = useState(false);
+
   // Core Persisted States with local storage fallbacks
   const [tasks, setTasks] = useState<Task[]>(() => {
     const dbVersion = localStorage.getItem("gor_db_version");
-    const isNewDb = dbVersion === "v2";
+    const isNewDb = dbVersion === "v3";
     
     if (!isNewDb) {
       localStorage.removeItem("gor_tasks");
-      localStorage.setItem("gor_db_version", "v2");
+      localStorage.setItem("gor_db_version", "v3");
     }
 
     const saved = isNewDb ? localStorage.getItem("gor_tasks") : null;
@@ -98,8 +126,8 @@ export default function App() {
       const newElem = {
         id: "ia_itp",
         name: "Implementación de recursos tecnológicos potenciados con IA para ITP",
-        status: "Completado",
-        comment: "Se inició la fase de evaluación para la integración de herramientas de IA generativa y visión artificial en los procesos de inspección técnica de ITP."
+        status: "Pendiente",
+        comment: ""
       };
       if (revisionIndex !== -1) {
         loaded = [
@@ -112,6 +140,15 @@ export default function App() {
       }
     }
 
+    const dummyTexts = [
+      "Se completó la revisión preliminar",
+      "Se reporta un atraso de dos semanas",
+      "Se registraron 4 nuevos controles",
+      "Falta actualizar el registro de las lecciones",
+      "Se recopilaron los indicadores HSE",
+      "Se inició la fase de evaluación"
+    ];
+
     return loaded.map((d: any) => {
       let name = d.name;
       if (d.id === "revision") {
@@ -123,10 +160,18 @@ export default function App() {
       if (d.id === "ia_itp") {
         name = "Implementación de recursos tecnológicos potenciados con IA para ITP";
       }
-      const hasComment = d.comment && d.comment.trim().length > 0;
+      let comment = d.comment || "";
+      let optimizedComment = d.optimizedComment || "";
+      if (dummyTexts.some(dummy => comment.includes(dummy))) {
+        comment = "";
+        optimizedComment = "";
+      }
+      const hasComment = comment.trim().length > 0;
       return {
         ...d,
         name,
+        comment,
+        optimizedComment,
         status: hasComment ? "Completado" : "Pendiente"
       };
     });
@@ -236,7 +281,7 @@ export default function App() {
   };
 
   // Discipline Mutator
-  const handleUpdateComment = (id: string, newComment: string) => {
+  const handleUpdateComment = (id: string, newComment: string, optimizedComment?: string) => {
     setDisciplines((prev) =>
       prev.map((d) => {
         if (d.id === id) {
@@ -244,6 +289,7 @@ export default function App() {
           return {
             ...d,
             comment: newComment,
+            optimizedComment: typeof optimizedComment !== "undefined" ? optimizedComment : newComment,
             status: hasComment ? "Completado" : "Pendiente"
           };
         }
@@ -372,6 +418,11 @@ export default function App() {
     setReportContext(newContext);
     localStorage.setItem("report_context", JSON.stringify(newContext));
 
+    // Dynamically update cloudReportId to match the new context
+    const defaultCloudId = `reporte_${newContext.gerencia.toLowerCase()}_${newContext.mes.toLowerCase()}_${newContext.ano}`;
+    setCloudReportId(defaultCloudId);
+    localStorage.setItem("firebase_report_id", defaultCloudId);
+
     // Load fresh data for that context
     const freshTasks = newContext.gerencia === "GPA"
       ? initialTasks.filter((t) => t.campo === "Putumayo" || t.campo === "Huila")
@@ -398,6 +449,128 @@ export default function App() {
       setActiveTab("diapositivas");
     }
   };
+
+  // Fetch available reports in cloud on mount or when status changes
+  const fetchCloudReports = async () => {
+    try {
+      const list = await getSavedReportsList();
+      setSavedCloudReports(list);
+    } catch (e) {
+      console.warn("Failed to fetch cloud reports:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isFirebaseInitialized) {
+      fetchCloudReports();
+    }
+  }, []);
+
+  // Cloud Handlers
+  const handleSaveToCloud = async (overrideId?: string) => {
+    const targetId = overrideId || cloudReportId;
+    if (!targetId.trim()) {
+      setCloudStatusMsg({ text: "El ID del reporte no puede estar vacío", isError: true });
+      return;
+    }
+
+    setIsCloudSyncing(true);
+    setCloudStatusMsg(null);
+
+    try {
+      await saveReportToCloud(
+        targetId,
+        reportContext,
+        tasks,
+        disciplines,
+        teamMembers,
+        insights
+      );
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastCloudSaved(timeStr);
+      localStorage.setItem("firebase_last_saved", timeStr);
+      localStorage.setItem("firebase_report_id", targetId);
+      
+      setCloudStatusMsg({ text: `Guardado exitoso: ${targetId}`, isError: false });
+      fetchCloudReports(); // refresh the list
+    } catch (error: any) {
+      console.error("Error saving to cloud:", error);
+      setCloudStatusMsg({ text: `Error al guardar: ${error.message || error}`, isError: true });
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handleLoadFromCloud = async (targetId: string) => {
+    if (!targetId.trim()) {
+      setCloudStatusMsg({ text: "Ingrese un ID válido", isError: true });
+      return;
+    }
+
+    setIsCloudSyncing(true);
+    setCloudStatusMsg(null);
+
+    try {
+      const cloudData = await loadReportFromCloud(targetId);
+      if (cloudData) {
+        if (cloudData.reportContext) {
+          setReportContext(cloudData.reportContext);
+          localStorage.setItem("report_context", JSON.stringify(cloudData.reportContext));
+        }
+        if (cloudData.tasks) {
+          setTasks(cloudData.tasks);
+          localStorage.setItem("gor_tasks", JSON.stringify(cloudData.tasks));
+        }
+        if (cloudData.disciplines) {
+          setDisciplines(cloudData.disciplines);
+          localStorage.setItem("gor_disciplines", JSON.stringify(cloudData.disciplines));
+        }
+        if (cloudData.teamMembers) {
+          setTeamMembers(cloudData.teamMembers);
+          localStorage.setItem("gor_team", JSON.stringify(cloudData.teamMembers));
+        }
+        if (cloudData.insights) {
+          setInsights(cloudData.insights);
+          localStorage.setItem("gor_insights", JSON.stringify(cloudData.insights));
+        }
+
+        setCloudReportId(targetId);
+        localStorage.setItem("firebase_report_id", targetId);
+
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setLastCloudSaved(timeStr);
+        localStorage.setItem("firebase_last_saved", timeStr);
+
+        setCloudStatusMsg({ text: "Datos cargados de la nube con éxito", isError: false });
+        setShowContextSetup(false); // make sure we hide context setup
+      } else {
+        setCloudStatusMsg({ text: "No se encontró ningún reporte con ese ID", isError: true });
+      }
+    } catch (error: any) {
+      console.error("Error loading from cloud:", error);
+      setCloudStatusMsg({ text: `Error al cargar: ${error.message || error}`, isError: true });
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  // Debounced auto-save to Cloud
+  useEffect(() => {
+    if (!autoCloudSync || !isFirebaseInitialized) return;
+
+    const timer = setTimeout(() => {
+      console.log("Auto-saving changes to Firebase Cloud...");
+      handleSaveToCloud();
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [tasks, disciplines, teamMembers, insights, reportContext, autoCloudSync]);
+
+  // Sync autoCloudSync toggle value to local storage
+  useEffect(() => {
+    localStorage.setItem("firebase_auto_sync", String(autoCloudSync));
+  }, [autoCloudSync]);
 
   // Filter tasks that are critical to count in sidebar alerts
   const criticalCount = tasks.filter((t) => t.estado === "Sin iniciar").length;
@@ -558,17 +731,6 @@ export default function App() {
 
             {/* Sidebar bottom configs */}
             <div className="mt-auto border-t border-slate-200 pt-4 flex flex-col gap-1.5">
-              <button
-                onClick={() => setShowInfoModal({
-                  title: "Configuración del Sistema GOR",
-                  content: "Región: Andina Oriente. Entorno de Datos: Seguro. IA Engine: Gemini 3.5 Flash. Modo de Persistencia: LocalStorage seguro. Sincronización automática de cambios activa.",
-                })}
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-200/50 text-slate-500 transition-colors text-left"
-              >
-                <Settings className="w-4 h-4" />
-                <span className="text-xs font-semibold">Configuración</span>
-              </button>
-              
               <button
                 onClick={() => setActiveTab("portada")}
                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-rose-50 text-rose-600 transition-colors text-left"

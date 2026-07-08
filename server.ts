@@ -30,6 +30,31 @@ function getGeminiClient(): GoogleGenAI | null {
   return aiClient;
 }
 
+// Retry wrapper for Gemini API to handle transient rate-limiting (429) or high-demand (503) errors gracefully
+async function generateContentWithRetry(ai: GoogleGenAI, options: any, retries = 3, delay = 1000): Promise<any> {
+  try {
+    return await ai.models.generateContent(options);
+  } catch (error: any) {
+    const isTransient = error.status === 503 || 
+                        error.code === 503 ||
+                        error.status === 429 ||
+                        error.code === 429 ||
+                        (error.message && (
+                          error.message.includes("503") || 
+                          error.message.includes("UNAVAILABLE") || 
+                          error.message.includes("high demand") ||
+                          error.message.includes("429") ||
+                          error.message.includes("RESOURCE_EXHAUSTED")
+                        ));
+    if (isTransient && retries > 0) {
+      console.warn(`Gemini API returned transient error: ${error.message || error}. Retrying in ${delay}ms... (Remaining retries: ${retries})`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return generateContentWithRetry(ai, options, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+}
+
 // Helper to enforce strict character limits by selectively including bullet lines or truncating elegantly
 function enforceCharacterLimit(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
@@ -57,40 +82,98 @@ function enforceCharacterLimit(text: string, maxLen: number): string {
 
 // Helper to generate a high-quality technical fallback for discipline comments when Gemini is offline/overloaded
 function generateFallbackOptimizedComment(id: string, cleanComment: string): string {
-  const replaceMap: { [key: string]: string } = {
-    "retraso": "desviación temporal en cronograma",
-    "atraso": "desviación en cronograma operacional",
-    "demora": "retraso logístico de componentes",
-    "malo": "desfavorable en métricas de confiabilidad",
-    "problemas": "intermitencias operativas registradas",
-    "falla": "anomalía técnica identificada",
-    "daño": "compromiso estructural detectado",
-    "falta": "requerimiento pendiente de",
-    "jefe": "comité gerencial",
-    "ayuda": "soporte de gestión ejecutiva",
-    "atrasado": "desfasado frente a línea base",
-    "retrasado": "desfasado frente a línea base",
-    "excelente": "altamente satisfactorio bajo estándares corporativos",
+  const spellCorrection: { [key: string]: string } = {
+    "probremas": "problemas",
+    "probrema": "problema",
+    "problenas": "problemas",
+    "problena": "problema",
+    "sharepoin": "SharePoint",
+    "sharepoint": "SharePoint",
+    "share point": "SharePoint",
+    "itp": "ITP",
+    "ia": "IA",
+    "pids": "P&IDs",
+    "pid": "P&ID",
+    "mocs": "MOCs",
+    "moc": "MOC",
+    "reunion": "reunión",
+    "reuniones": "reuniones",
+    "logistica": "logística",
+    "tecnico": "técnico",
+    "tecnicos": "técnicos",
+    "revision": "revisión",
+    "revisiones": "revisión",
+    "atraso": "atraso",
+    "retrazo": "retraso",
+    "retraso": "retraso",
+    "corregido": "corregido",
+    "correcion": "corrección",
+    "correccion": "corrección",
+    "evaluacion": "evaluación",
+    "bomba": "turbobomba",
+    "bombas": "turbobombas",
+    "turbobomba": "turbobomba",
+    "turbobombas": "turbobombas",
+    "ok": "satisfactorio",
+    "bien": "óptimo",
+    "mal": "desvío",
+    "reunon": "reunión",
+    "lecciones": "lecciones aprendidas",
   };
 
-  const sentences = cleanComment
+  const gerencialTranslations: { [key: string]: string } = {
+    "tengo problemas": "se identificaron desviaciones operativas",
+    "tenemos problemas": "se registraron intermitencias técnicas",
+    "no funciona": "presenta indisponibilidad técnica temporal",
+    "falta hacer": "se encuentra pendiente la ejecución de",
+    "vamos bien": "avance conforme a la línea base programada",
+    "viento en popa": "con avance conforme al cronograma oficial",
+    "atrasados": "con desfase frente a la planificación vigente",
+    "atrasado": "desfasado frente a la línea base",
+    "atrasada": "desfasada frente al cronograma de entrega",
+    "retrazada": "desfasada frente al cronograma de entrega",
+    "hacer": "ejecutar las actividades de",
+    "haciendo": "ejecutando de manera sistemática",
+    "todo listo": "completado satisfactoriamente bajo estándares de calidad",
+    "ya termine": "se culminaron con éxito las actividades planificadas",
+    "terminamos": "culminación exitosa de los entregables correspondientes",
+    "ayuda de los jefes": "escalamiento y soporte de la gestión gerencial",
+    "ayuda del jefe": "soporte estratégico de la dirección gerencial",
+    "retraso de dos semanas": "desviación logística temporal de 14 días",
+    "demora de dos semanas": "desviación logística temporal de 14 días",
+  };
+
+  let text = cleanComment;
+
+  // Replace spelling mistakes by looking at word boundaries
+  Object.keys(spellCorrection).forEach((errWord) => {
+    const regex = new RegExp(`\\b${errWord}\\b`, "gi");
+    text = text.replace(regex, spellCorrection[errWord]);
+  });
+
+  // Apply general gerencial rephrasing
+  Object.keys(gerencialTranslations).forEach((informalPhrase) => {
+    const regex = new RegExp(informalPhrase, "gi");
+    text = text.replace(regex, gerencialTranslations[informalPhrase]);
+  });
+
+  // Split into sentences
+  const sentences = text
     .split(/(?:[.\n]|\s{2,})/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 5);
+    .filter((s) => s.length > 3);
 
   const fallbackBullets = sentences.map((s) => {
-    let text = s;
-    Object.keys(replaceMap).forEach((key) => {
-      const regex = new RegExp(`\\b${key}\\b`, "gi");
-      text = text.replace(regex, replaceMap[key]);
-    });
-    let formatted = text.charAt(0).toUpperCase() + text.slice(1);
-    if (!formatted.endsWith(".")) formatted += ".";
-    return `• ${formatted}`;
+    let bullet = s;
+    // Capitalize first letter
+    bullet = bullet.charAt(0).toUpperCase() + bullet.slice(1);
+    // Ensure it ends with a period
+    if (!bullet.endsWith(".")) bullet += ".";
+    return `• ${bullet}`;
   });
 
   if (fallbackBullets.length === 0) {
-    fallbackBullets.push(`• Avance operativo registrado para la disciplina ${id.toUpperCase()}: ${cleanComment}.`);
+    fallbackBullets.push(`• Registro de avance operativo para la disciplina ${id.toUpperCase()}: ${cleanComment}.`);
   }
 
   let result = fallbackBullets.slice(0, 3).join("\n");
@@ -147,7 +230,7 @@ Asegúrate de que los textos sean formales, corporativos y con enfoque técnico 
   }
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
@@ -209,18 +292,17 @@ app.post("/api/optimize-comment", async (req, res) => {
 
   const ai = getGeminiClient();
 
-  let systemPrompt = `Actúas como un redactor ejecutivo y experto de alto nivel en Seguridad de Procesos para un comité gerencial de Ecopetrol.
-Tu única tarea consiste en corregir, optimizar, pulir gramaticalmente y refinar técnicamente el comentario de avance operativo suministrado por el usuario.
+  let systemPrompt = `Actúas como un redactor ejecutivo y experto de alto nivel en Seguridad de Procesos para un comité gerencial de Ecopetrol S.A.
+Tu única tarea consiste en corregir, optimizar, pulir gramaticalmente de forma impecable y refinar técnicamente el comentario de avance operativo suministrado por el usuario.
 
 Sigue rigurosamente estas pautas:
-1. Corrige ortografía, gramática, redundancias y signos de puntuación de forma impecable.
-2. Convierte expresiones informales, coloquiales o de lenguaje natural simple en un tono estrictamente formal, técnico, profesional y de nivel corporativo para Seguridad de Procesos e ingeniería de hidrocarburos.
-3. Organiza y resume el contenido en viñetas claras, concisas y fáciles de leer en una diapositiva ejecutiva de presentación. Cada viñeta debe comenzar exactamente con el carácter de viñeta '•' (código alt 7 o viñeta estándar). Genera un máximo de 2 o 3 viñetas breves.
-4. Conserva intactos de forma obligatoria todos los códigos numéricos de proyectos (ej. "ECU17049", "ECU17114"), nombres de clústeres, equipos (ej. "CASE-0021", "MOCs", "turbobombas", "P&IDs"), cifras numéricas, porcentajes, fechas y nombres de instalaciones o personas.
-5. NO inventes información, no agregues datos ficticios, no cambies fechas y no agregues supuestos. Conserva el significado técnico y operativo exacto expresado por el usuario.`;
+1. CORRECCIÓN ORTOGRÁFICA, ACENTUACIÓN Y PUNTUACIÓN PERFECTA: Debes corregir de forma estricta e impecable cualquier falta de ortografía, errores de digitación (ej. "probremas" a "problemas", "sharepoint" o "sharepoin" a "SharePoint", "itp" a "ITP", "ia" a "IA"), omisión de tildes (ej. "reunion" a "reunión", "logistica" a "logística", "revision" a "revisión"), problemas de puntuación (comas, puntos) y mayúsculas/minúsculas.
+2. TONO GERENCIAL Y TÉCNICO DE ALTA DIRECCIÓN: Elimina el lenguaje informal, coloquial, descuidado, corto o conversacional. Redáctalo en un tono sumamente formal, ejecutivo y técnico de nivel corporativo para Seguridad de Procesos e ingeniería de hidrocarburos de Ecopetrol. Usa un léxico sofisticado (ej. "indisponibilidad temporal de componentes", "desviación operacional crítica", "mitigación preventiva de riesgos", "alineación con los entregables de ingeniería").
+3. FORMATO DE PRESENTACIÓN EJECUTIVA EN VIÑETAS: Estructura la respuesta final únicamente en viñetas claras, concisas y de alta recordabilidad, listas para presentarse en una diapositiva gerencial. Cada viñeta debe comenzar exactamente con el carácter especial "• " (sin usar guiones, asteriscos, números ni decoraciones). Genera entre 1 y 3 viñetas como máximo.
+4. ABSOLUTA INTEGRIDAD DE DATOS REALES: Conserva intactos, obligatoriamente y sin modificación alguna, todos los códigos de proyectos (ej. "ECU17049", "ECU17114"), nombres de clústeres, equipos (ej. "CASE-0021", "MOCs", "turbobombas", "P&IDs"), porcentajes, cifras, fechas e instalaciones indicadas. NO inventes información, no agregues datos ficticios, no añadas supuestos ni inventes fechas.`;
 
   if (id === "continuidad") {
-    systemPrompt += `\n6. REGLA DE SÍNTESIS EXTREMA OBLIGATORIA: El resultado final DEBE tener un máximo absoluto de 280 caracteres (incluyendo espacios, saltos de línea y viñetas). Prioriza los avances, resultados e hitos técnicos de mayor relevancia gerencial, eliminando cualquier detalle secundario o explicaciones de relleno. Sé sumamente conciso, ejecutivo, y redacta de tal forma que se lea completo en menos de 10 segundos.`;
+    systemPrompt += `\n5. REGLA DE SÍNTESIS EXTREMA OBLIGATORIA: El resultado final DEBE tener un máximo absoluto de 280 caracteres (incluyendo espacios, saltos de línea y viñetas). Prioriza los avances, resultados e hitos técnicos de mayor relevancia gerencial, eliminando cualquier detalle secundario o explicaciones de relleno. Sé sumamente conciso, ejecutivo, y redacta de tal forma que se lea completo en menos de 10 segundos.`;
   }
 
   systemPrompt += `\n\nComentario original del usuario:\n"${cleanComment}"\n\nResponde únicamente con el texto optimizado en viñetas estructuradas que inicien con "• ". No incluyas explicaciones, preámbulos, ni introducciones de ningún tipo.`;
@@ -232,7 +314,7 @@ Sigue rigurosamente estas pautas:
   }
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: "gemini-3.5-flash",
       contents: systemPrompt,
     });
